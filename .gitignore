@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+*.log
+.env
+.env.*
+!.env.example
+data/
+*.pem
+*.key
+*.crt
+*.cert
+.DS_Store
+Thumbs.db
