@@ -11,6 +11,10 @@ test('aplica os valores do README e do Docker Compose', () => {
   assert.equal(config.TELEMETRY_INTERVAL_MS, 5000);
   assert.equal(config.GRPC_DEADLINE_MS, 2500);
   assert.equal(config.BUFFER_MAX_ITEMS, 5000);
+  assert.equal(config.SIMULATOR_ENABLED, true);
+  assert.equal(config.SIMULATOR_DOCK_TIME_MS, 30000);
+  assert.equal(config.SIMULATOR_FUEL_CAPACITY_L, 2000);
+  assert.equal(config.SIMULATOR_SEED, undefined);
 });
 
 test('converte as variáveis de ambiente e aceita o DNS do Compose', () => {
@@ -40,9 +44,30 @@ test('recusa portas, ciclos e identificadores inválidos antes de iniciar', () =
     ['CENTRAL_GRPC_URL', 'http://localhost:50051'],
     ['CENTRAL_GRPC_URL', 'localhost:70000'],
     ['CENTRAL_GRPC_URL', 'localhost'],
+    ['TELEMETRY_INTERVAL_MS', '2147483648'],
+    ['SIMULATOR_ENABLED', 'yes'],
+    ['SIMULATOR_DOCK_TIME_MS', '-1'],
+    ['SIMULATOR_DOCK_TIME_MS', ''],
+    ['SIMULATOR_FUEL_CAPACITY_L', '0'],
+    ['SIMULATOR_FUEL_CAPACITY_L', 'Infinity'],
+    ['SIMULATOR_SEED', '-1'],
+    ['SIMULATOR_SEED', '4294967296'],
+    ['SIMULATOR_SEED', '1.5'],
+    ['SIMULATOR_SEED', ''],
   ]) {
     assert.throws(() => validateEnvironment({ [name]: value }), new RegExp(name));
   }
+});
+
+test('aceita seed zero e desabilitacao explicita do simulador', () => {
+  const config = validateEnvironment({
+    SIMULATOR_ENABLED: 'false', SIMULATOR_SEED: '0',
+    SIMULATOR_DOCK_TIME_MS: '0', SIMULATOR_FUEL_CAPACITY_L: '0.5',
+  });
+  assert.equal(config.SIMULATOR_ENABLED, false);
+  assert.equal(config.SIMULATOR_SEED, 0);
+  assert.equal(config.SIMULATOR_DOCK_TIME_MS, 0);
+  assert.equal(config.SIMULATOR_FUEL_CAPACITY_L, 0.5);
 });
 
 test('exige os três arquivos de mTLS juntos e impede produção sem mTLS', () => {
