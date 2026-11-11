@@ -19,10 +19,21 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           path: ferry-boat
+      - name: Seleciona contrato da branch correspondente ou main
+        id: contract
+        env:
+          CANDIDATE_REF: ${{ github.head_ref || github.ref_name }}
+        run: |
+          matched=$(git ls-remote --heads https://github.com/RafaelFS01/ferry-telemetry-tde.git "refs/heads/$CANDIDATE_REF")
+          if [ -n "$matched" ]; then
+            echo "ref=$CANDIDATE_REF" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           repository: RafaelFS01/ferry-telemetry-tde
-          ref: main
+          ref: ${{ steps.contract.outputs.ref }}
           path: orchestrator
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
