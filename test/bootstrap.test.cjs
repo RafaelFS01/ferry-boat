@@ -29,6 +29,7 @@ test('executa o build isolado com o IDL empacotado e configuração do .env', { 
   await new Promise((resolve) => reservation.close(resolve));
   writeFileSync(path.join(project, '.env'), [
     'NODE_ENV=test',
+    'SIMULATOR_ENABLED=false',
     'API_HOST=127.0.0.1',
     `API_PORT=${port}`,
     'BOAT_ID=ferry-build-isolado',
@@ -37,7 +38,7 @@ test('executa o build isolado com o IDL empacotado e configuração do .env', { 
 
   const environment = { ...process.env };
   for (const name of [
-    'NODE_ENV', 'API_HOST', 'API_PORT', 'BOAT_ID', 'CENTRAL_GRPC_URL',
+    'NODE_ENV', 'API_HOST', 'API_PORT', 'BOAT_ID', 'CENTRAL_GRPC_URL', 'SIMULATOR_ENABLED',
     'TELEMETRY_PROTO_PATH', 'GRPC_TLS_CA_PATH', 'GRPC_TLS_CERT_PATH', 'GRPC_TLS_KEY_PATH',
   ]) delete environment[name];
   environment.NODE_PATH = path.resolve(__dirname, '../node_modules');
