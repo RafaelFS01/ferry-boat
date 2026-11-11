@@ -54,6 +54,12 @@ export interface NavigationData {
   rumo_graus: number;
   /** Estado operacional corrente da embarcação */
   status_navegacao: NavigationStatus;
+  /** Diluição horizontal de precisão; ausente em emissores legados */
+  hdop?:
+    | number
+    | undefined;
+  /** Quantidade de satélites usados na solução GPS */
+  satelites?: number | undefined;
 }
 
 /** Telemetria dos motores principais e sistemas de propulsão náutica. */
@@ -68,6 +74,8 @@ export interface PropulsionData {
   nivel_combustivel_percentual: number;
   /** Vazão instantânea de combustível em litros por hora (L/h) */
   consumo_instantaneo_lph: number;
+  /** Tensão do sistema elétrico de bordo em volts */
+  tensao_bateria_volts?: number | undefined;
 }
 
 /** Métricas de qualidade do enlace marítimo e estado do buffer de tolerância a falhas (CAP/AP). */
@@ -105,7 +113,11 @@ export interface TelemetryPacket {
     | PropulsionData
     | undefined;
   /** Diagnóstico de conectividade de rede e estado do buffer offline */
-  rede: NetworkDiagnostics | undefined;
+  rede:
+    | NetworkDiagnostics
+    | undefined;
+  /** Sequência a partir de 1 por execução; ausente em emissores legados */
+  sequence_number?: string | undefined;
 }
 
 /** Confirmação (ACK) retornada de forma síncrona pelo Nó Servidor Central ao Nó Embarcado. */
