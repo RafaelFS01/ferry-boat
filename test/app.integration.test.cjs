@@ -30,6 +30,7 @@ test('inicia sem Central, expõe health e transporta o contrato tipado por gRPC'
   server.forceShutdown();
 
   process.env.NODE_ENV = 'test';
+  process.env.SIMULATOR_ENABLED = 'false';
   process.env.BOAT_ID = 'ferry-integracao';
   process.env.CENTRAL_GRPC_URL = `127.0.0.1:${port}`;
   const { AppModule } = require('../dist/app.module.js');
