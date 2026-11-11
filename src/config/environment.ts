@@ -5,6 +5,10 @@ export interface BoatEnvironment {
   BOAT_ID: string;
   CENTRAL_GRPC_URL: string;
   TELEMETRY_INTERVAL_MS: number;
+  SIMULATOR_ENABLED: boolean;
+  SIMULATOR_DOCK_TIME_MS: number;
+  SIMULATOR_FUEL_CAPACITY_L: number;
+  SIMULATOR_SEED: number | undefined;
   GRPC_DEADLINE_MS: number;
   BUFFER_MAX_ITEMS: number;
   BUFFER_BACKUP_PATH: string;
@@ -44,6 +48,25 @@ export function validateEnvironment(
   environment: Record<string, unknown>,
 ): BoatEnvironment {
   const nodeEnv = text(environment, 'NODE_ENV', 'development');
+  const enabled = environment.SIMULATOR_ENABLED ?? 'true';
+  if (!['true', 'false', true, false].includes(enabled as string | boolean)) {
+    throw new Error('SIMULATOR_ENABLED deve ser true ou false.');
+  }
+  const dockTime = Number(environment.SIMULATOR_DOCK_TIME_MS ?? 30000);
+  if (!Number.isSafeInteger(dockTime) || dockTime < 0 ||
+    String(environment.SIMULATOR_DOCK_TIME_MS ?? 30000).trim() === '') {
+    throw new Error('SIMULATOR_DOCK_TIME_MS deve ser um inteiro maior ou igual a zero.');
+  }
+  const capacity = Number(environment.SIMULATOR_FUEL_CAPACITY_L ?? 2000);
+  if (!Number.isFinite(capacity) || capacity <= 0) {
+    throw new Error('SIMULATOR_FUEL_CAPACITY_L deve ser um numero positivo.');
+  }
+  const rawSeed = environment.SIMULATOR_SEED;
+  const seed = rawSeed === undefined ? undefined : Number(rawSeed);
+  if (seed !== undefined && (!Number.isInteger(seed) || seed < 0 || seed > 4294967295 ||
+    String(rawSeed).trim() === '')) {
+    throw new Error('SIMULATOR_SEED deve ser um inteiro entre 0 e 4294967295.');
+  }
   if (!['development', 'test', 'production'].includes(nodeEnv)) {
     throw new Error('NODE_ENV deve ser development, test ou production.');
   }
@@ -76,7 +99,11 @@ export function validateEnvironment(
     API_PORT: positiveInteger(environment, 'API_PORT', 3002, 65535),
     BOAT_ID: text(environment, 'BOAT_ID', 'ferry-ivete-sangalo'),
     CENTRAL_GRPC_URL: centralUrl,
-    TELEMETRY_INTERVAL_MS: positiveInteger(environment, 'TELEMETRY_INTERVAL_MS', 5000),
+    TELEMETRY_INTERVAL_MS: positiveInteger(environment, 'TELEMETRY_INTERVAL_MS', 5000, 2147483647),
+    SIMULATOR_ENABLED: enabled === 'true' || enabled === true,
+    SIMULATOR_DOCK_TIME_MS: dockTime,
+    SIMULATOR_FUEL_CAPACITY_L: capacity,
+    SIMULATOR_SEED: seed,
     GRPC_DEADLINE_MS: positiveInteger(environment, 'GRPC_DEADLINE_MS', 2500),
     BUFFER_MAX_ITEMS: positiveInteger(environment, 'BUFFER_MAX_ITEMS', 5000),
     BUFFER_BACKUP_PATH: text(environment, 'BUFFER_BACKUP_PATH', './data/telemetry_buffer_backup.json'),
