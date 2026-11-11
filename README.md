@@ -58,7 +58,7 @@ src/
   app.module.ts
   main.ts
   config/         # Leitura e validação do ambiente; localização do contrato
-  simulator/      # GpsSimulatorModule — implementação na SCRUM-13
+  simulator/      # Modelo náutico, sensores, ciclo e eventos da SCRUM-13
   buffer/         # BufferModule — implementação na SCRUM-15
   grpc/           # GrpcClientModule, cliente tipado e tipos gerados
   edge-api/       # EdgeApiModule e GET /health
@@ -76,10 +76,69 @@ preservam o `snake_case` do IDL e o loader usa `keepCase: true`. Os campos `int6
 (`timestamp_coleta` e `processado_em`) são strings, tanto no gerador quanto no
 loader, evitando perda de precisão. Enums permanecem numéricos.
 
-Esta entrega não inicia coleta nem envia pacotes automaticamente. Simulador,
-persistência FIFO, deadlines, keepalive, retries e descarregamento da fila serão
-implementados nas tarefas seguintes. `GRPC_DEADLINE_MS` e as variáveis do buffer
-já ficam documentados e validados para essa integração.
+O simulador inicia a coleta automaticamente; o envio à Central será conectado
+pelo consumidor de eventos nas próximas tarefas. Persistência FIFO, deadlines,
+keepalive, retries e descarregamento da fila permanecem nas SCRUM-15 e SCRUM-14.
+`GRPC_DEADLINE_MS` e as variáveis do buffer ficam documentados e validados.
+
+## Simulador náutico (SCRUM-13)
+
+A primeira amostra é publicada após `TELEMETRY_INTERVAL_MS` (padrão 5000 ms).
+Cada emissão produz UUIDv4 novo em `message_id`, seu alias local `packet_id`,
+timestamp de coleta e `sequence_number` a partir de 1. A sequência usa `bigint`
+internamente e é reiniciada somente ao reiniciar o processo, não entre viagens.
+Os UUIDs continuam aleatórios mesmo com seed fixa.
+
+O evento `telemetry.generated` transporta `GeneratedTelemetryPacket`, um
+`TelemetryPacket & { packet_id: string }`. Um consumidor pode usar
+`@OnEvent(TELEMETRY_GENERATED_EVENT)`; o alias não faz parte do Protobuf.
+O simulador aguarda o registro dos listeners, funciona sem Central/consumidor,
+emite uma amostra por ciclo sem rajadas após atrasos e cancela o timer ao encerrar.
+O evento é apenas em memória: ainda não há garantia de armazenamento ou entrega.
+
+O trajeto é uma geodésica sintética São Joaquim (-12.9482, -38.5028) ↔ Bom
+Despacho (-12.9774, -38.5724). O barco começa atracado, aguarda 30s, acelera e
+freia a 0,1 m/s², para no destino e retorna após outra atracação de 30s. A física
+usa tempo monotônico e subpassos de até 1s. Os logs apresentam UUID, sequência,
+sentido e estado operacional a cada amostra.
+
+| Variável | Modelo sintético |
+| --- | --- |
+| Velocidade | 10–14 nós em cruzeiro, referência 12 nós, maré senoidal de 12h e ruído suave; zero atracado |
+| GPS | Ruído gaussiano suavizado limitado a 10m; coordenadas exatas atracado; rumo verdadeiro em [0, 360) |
+| Qualidade GPS | 8–14 satélites e HDOP 0,8–2,0, com relação inversa |
+| Motor | 1500–1850 RPM em cruzeiro; 750 RPM em marcha lenta; temperatura 78–92°C |
+| Sistema elétrico | Tensão suavizada limitada a 24–27V |
+| Combustível | Tanque cheio de 2000 L; consumo 8 + 152 × carga³ L/h, integrado no tempo |
+
+Velocidade e RPM podem ficar abaixo das faixas de cruzeiro durante manobras.
+Ao esgotar o tanque, o barco para em emergência, zera motor e consumo e continua
+emitindo amostras. Não há reabastecimento automático. Passageiros são zero;
+RSSI, RTT, perda e tamanho do buffer usam zero como placeholder não medido,
+`tipo_enlace=UNSPECIFIED` e `tentativa_envio=1`.
+
+Parâmetros adicionais em `.env`: `SIMULATOR_ENABLED=true`,
+`SIMULATOR_DOCK_TIME_MS=30000`, `SIMULATOR_FUEL_CAPACITY_L=2000` e
+`SIMULATOR_SEED` opcional (inteiro de 0 a 4294967295). Nos testes de infraestrutura,
+desabilite explicitamente com `SIMULATOR_ENABLED=false`. A seed reproduz os
+sensores sob a mesma progressão de tempo; relógio e scheduler são injetáveis.
+
+O contrato adiciona campos opcionais: `sequence_number` (uint64, tag 8),
+`navegacao.hdop` (double, tag 6), `navegacao.satelites` (uint32, tag 7) e
+`propulsao.tensao_bateria_volts` (double, tag 6). Sequência e timestamps trafegam
+como strings no TypeScript. Mensagens antigas continuam válidas; a Central antiga
+ignora os campos novos. Armazenamento e visualização desses campos na Central
+exigem sua própria implementação.
+
+Para validar o IDL na pasta `proto` do orquestrador:
+
+```powershell
+npm exec --yes --package=@bufbuild/buf@1.75.0 -- buf lint
+npm exec --yes --package=@bufbuild/buf@1.75.0 -- buf breaking --against ../ferry-boat/test/fixtures/legacy
+```
+
+Estes parâmetros são de demonstração, sem calibração para uma embarcação, maré
+ou rota operacional real.
 
 ## Ambiente e segurança do canal
 
@@ -104,6 +163,11 @@ O Compose e o Dockerfile de desenvolvimento ficam no orquestrador. O serviço j�
 injeta `CENTRAL_GRPC_URL=ferry-central:50051`, `API_PORT=3002` e monta o IDL em
 `/proto`. O comando existente `npm run start:dev` passa a funcionar com este setup.
 A execução completa também depende da implementação do submódulo `ferry-central`.
+
+O CI do barco usa o contrato da branch de mesmo nome no orquestrador, quando
+ela existe; caso contrário, usa a main. Em pushes para main, o contrato vem da
+main do orquestrador. Assim, os PRs correspondentes podem ser validados juntos,
+mas o contrato deve ser integrado antes da implementação do barco.
 
 Para validar apenas o setup da SCRUM-10, execute na raiz do orquestrador:
 

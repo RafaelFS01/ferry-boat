@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package ferry.telemetry.v1;
+
+// Serviço canônico de ingestão de telemetria marítima do ecossistema
+// Ferry-Boat Salvador - Itaparica (Baía de Todos-os-Santos).
+service TelemetryService {
+  // RPC Unária para transmissão de pacote de telemetria do Nó Embarcado (NestJS)
+  // para o Nó Servidor Central em terra (Python grpc.aio).
+  rpc EnviarTelemetria(TelemetryPacket) returns (TelemetryAck);
+}
+
+// Estado operacional da embarcação durante a operação na Baía de Todos-os-Santos.
+enum NavigationStatus {
+  NAVIGATION_STATUS_UNSPECIFIED = 0;
+  NAVIGATION_STATUS_ATRACADO = 1;
+  NAVIGATION_STATUS_EM_TRAVESSIA = 2;
+  NAVIGATION_STATUS_MANOBRA = 3;
+  NAVIGATION_STATUS_EMERGENCIA = 4;
+}
+
+// Tecnologia do enlace de comunicação ativo no momento da transmissão.
+enum LinkType {
+  LINK_TYPE_UNSPECIFIED = 0;
+  LINK_TYPE_RADIO_VHF_MARITIMO = 1;
+  LINK_TYPE_4G_5G_COSTEIRO = 2;
+  LINK_TYPE_SATELITAL = 3;
+  LINK_TYPE_WIFI_TERMINAL = 4;
+}
+
+// Código semântico de resultado do processamento na Central.
+enum AckStatus {
+  ACK_STATUS_UNSPECIFIED = 0;
+  ACK_STATUS_ACEITO = 1;
+  ACK_STATUS_DUPLICADO_IGNORADO = 2;
+  ACK_STATUS_REJEITADO = 3;
+}
+
+// Dados de georreferenciamento e cinemática naval coletados pelo GPS de bordo.
+message NavigationData {
+  double latitude = 1;                    // Latitude em graus decimais (WGS84, ex.: -12.9714 a -12.8872)
+  double longitude = 2;                   // Longitude em graus decimais (WGS84, ex.: -38.5014 a -38.6094)
+  double velocidade_nos = 3;              // Velocidade sobre o fundo (SOG) em nós náuticos (knots)
+  double rumo_graus = 4;                  // Curso/aproamento verdadeiro (COG/Heading) entre 0.0 e 360.0 graus
+  NavigationStatus status_navegacao = 5;  // Estado operacional corrente da embarcação
+}
+
+// Telemetria dos motores principais e sistemas de propulsão náutica.
+message PropulsionData {
+  double rpm_motor = 1;                     // Rotação do eixo/motor principal em RPM
+  double temperatura_motor_celsius = 2;     // Temperatura do sistema de arrefecimento do motor em graus Celsius
+  double pressao_oleo_bar = 3;              // Pressão do óleo lubrificante principal em Bar
+  double nivel_combustivel_percentual = 4;  // Nível remanescente de combustível diesel marítimo (0.0 a 100.0%)
+  double consumo_instantaneo_lph = 5;       // Vazão instantânea de combustível em litros por hora (L/h)
+}
+
+// Métricas de qualidade do enlace marítimo e estado do buffer de tolerância a falhas (CAP/AP).
+message NetworkDiagnostics {
+  int32 rssi_dbm = 1;                    // Intensidade do sinal recebido (RSSI) em dBm (ex.: -65 a -110 dBm)
+  double latencia_rtt_ms = 2;            // Último Round-Trip Time (RTT) aferido até a Central em milissegundos
+  double perda_pacotes_percentual = 3;   // Taxa estimada de perda de pacotes no enlace (0.0 a 100.0%)
+  int32 tamanho_buffer_local = 4;        // Total de pacotes acumulados no buffer FIFO local no instante do envio
+  int32 tentativa_envio = 5;             // Número da tentativa de entrega (1 = envio original, >1 = flush/retry)
+  LinkType tipo_enlace = 6;              // Interface de rede utilizada na transmissão
+}
+
+// Pacote canônico de telemetria emitido periodicamente (a cada 5s) pelo Nó Embarcado.
+message TelemetryPacket {
+  string message_id = 1;             // Identificador único universal (UUIDv4) para garantia estrita de idempotência
+  string boat_id = 2;                // Identificador unívoco da embarcação (ex.: "ferry-ivete-sangalo")
+  int64 timestamp_coleta = 3;        // Carimbo de tempo Epoch em milissegundos registrado na origem (barco)
+  int32 passageiros = 4;             // Quantidade de passageiros a bordo na viagem atual (0 a 1000)
+  NavigationData navegacao = 5;      // Métricas de navegação e posicionamento GPS
+  PropulsionData propulsao = 6;      // Métricas de propulsão náutica e telemetria de máquina
+  NetworkDiagnostics rede = 7;       // Diagnóstico de conectividade de rede e estado do buffer offline
+}
+
+// Confirmação (ACK) retornada de forma síncrona pelo Nó Servidor Central ao Nó Embarcado.
+message TelemetryAck {
+  string message_id = 1;     // Eco do UUIDv4 do pacote processado para correlação no cliente
+  bool sucesso = 2;          // Indica se o pacote foi validado e aceito pela Central
+  bool duplicado = 3;        // Sinaliza se o pacote foi identificado como reenvio duplicado (idempotência ativa)
+  int64 processado_em = 4;   // Carimbo de data/hora do servidor Central (Epoch em milissegundos)
+  string mensagem = 5;       // Descrição textual do resultado da operação ou motivo de rejeição
+  AckStatus status = 6;      // Status categorizado do processamento na Central
+}
