@@ -10,6 +10,7 @@ export interface BoatEnvironment {
   SIMULATOR_FUEL_CAPACITY_L: number;
   SIMULATOR_SEED: number | undefined;
   GRPC_DEADLINE_MS: number;
+  GRPC_RETRY_MAX_ATTEMPTS: number;
   BUFFER_MAX_ITEMS: number;
   BUFFER_BACKUP_PATH: string;
   TELEMETRY_PROTO_PATH: string | undefined;
@@ -104,7 +105,8 @@ export function validateEnvironment(
     SIMULATOR_DOCK_TIME_MS: dockTime,
     SIMULATOR_FUEL_CAPACITY_L: capacity,
     SIMULATOR_SEED: seed,
-    GRPC_DEADLINE_MS: positiveInteger(environment, 'GRPC_DEADLINE_MS', 2500),
+    GRPC_DEADLINE_MS: positiveInteger(environment, 'GRPC_DEADLINE_MS', 2500, 2500),
+    GRPC_RETRY_MAX_ATTEMPTS: positiveInteger(environment, 'GRPC_RETRY_MAX_ATTEMPTS', 6, 10),
     BUFFER_MAX_ITEMS: positiveInteger(environment, 'BUFFER_MAX_ITEMS', 5000),
     BUFFER_BACKUP_PATH: text(environment, 'BUFFER_BACKUP_PATH', './data/telemetry_buffer_backup.json'),
     TELEMETRY_PROTO_PATH: environment.TELEMETRY_PROTO_PATH === undefined

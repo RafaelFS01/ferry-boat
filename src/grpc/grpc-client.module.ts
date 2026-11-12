@@ -7,6 +7,7 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
 import { BoatEnvironment } from '../config/environment';
 import { PROJECT_ROOT, resolveTelemetryProtoPath } from '../config/proto-path';
 import { TELEMETRY_GRPC_CLIENT } from './grpc-client.constants';
+import { GRPC_CHANNEL_OPTIONS, GRPC_RETRY_RUNTIME, grpcRetryRuntime } from './grpc-resilience';
 import { FERRY_TELEMETRY_V1_PACKAGE_NAME } from './telemetry';
 import { TelemetryGrpcClient } from './telemetry-grpc.client';
 
@@ -35,6 +36,7 @@ import { TelemetryGrpcClient } from './telemetry-grpc.client';
               package: FERRY_TELEMETRY_V1_PACKAGE_NAME,
               protoPath: resolveTelemetryProtoPath(config.get('TELEMETRY_PROTO_PATH', { infer: true })),
               credentials: channelCredentials,
+              channelOptions: { ...GRPC_CHANNEL_OPTIONS },
               loader: {
                 keepCase: true,
                 longs: String,
@@ -47,7 +49,10 @@ import { TelemetryGrpcClient } from './telemetry-grpc.client';
       },
     ]),
   ],
-  providers: [TelemetryGrpcClient],
+  providers: [
+    { provide: GRPC_RETRY_RUNTIME, useValue: grpcRetryRuntime },
+    TelemetryGrpcClient,
+  ],
   exports: [TelemetryGrpcClient],
 })
 export class GrpcClientModule {}

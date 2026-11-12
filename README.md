@@ -1,4 +1,4 @@
-# Nó embarcado — ferry-boat (SCRUM-10)
+# Nó embarcado — ferry-boat
 
 Base do cliente da telemetria Salvador–Itaparica, conforme o README do
 [orquestrador](https://github.com/RafaelFS01/ferry-telemetry-tde).
@@ -77,9 +77,64 @@ preservam o `snake_case` do IDL e o loader usa `keepCase: true`. Os campos `int6
 loader, evitando perda de precisão. Enums permanecem numéricos.
 
 O simulador inicia a coleta automaticamente; o envio à Central será conectado
-pelo consumidor de eventos nas próximas tarefas. Persistência FIFO, deadlines,
-keepalive, retries e descarregamento da fila permanecem nas SCRUM-15 e SCRUM-14.
-`GRPC_DEADLINE_MS` e as variáveis do buffer ficam documentados e validados.
+pelo consumidor de eventos nas próximas tarefas. O cliente já aplica deadlines,
+keepalive e retries da SCRUM-14. Persistência FIFO e descarregamento da fila
+permanecem na SCRUM-15; suas variáveis ficam documentadas e validadas.
+
+## Cliente gRPC resiliente (SCRUM-14)
+
+`TelemetryGrpcClient.enviarTelemetria(packet, metadata?)` mantém a API de
+Observable frio: uma assinatura inicia uma operação; `firstValueFrom` também
+pode ser usado. A operação é independente do temporizador do simulador e não
+assina `telemetry.generated` automaticamente. Evite múltiplas assinaturas para
+um único envio, pois cada assinatura cria sua própria operação.
+
+O canal configura `grpc.keepalive_time_ms=10000`,
+`grpc.keepalive_timeout_ms=5000` e `grpc.keepalive_permit_without_calls=1`.
+A Central Python integrada já permite pings sem dados com intervalo de 10s.
+Keepalive verifica o transporte; um pacote só dispara o evento offline quando
+sua RPC falha. Produção preserva a exigência de certificados mTLS.
+
+Cada tentativa recebe um deadline gRPC novo, por padrão de 2500ms, inclusive
+durante conexão/reconexão. A expiração cancela a chamada no transporte com
+`DEADLINE_EXCEEDED`. `GRPC_DEADLINE_MS` aceita 1–2500ms, sem ampliar esse teto.
+Cancelar a assinatura ou fechar a aplicação também cancela RPCs e timers.
+Esperas são assíncronas; uma operação em retry não bloqueia outras chamadas.
+
+Somente `UNAVAILABLE` e `DEADLINE_EXCEEDED` são repetidos. As bases de espera são
+2s, 4s, 8s, 16s e 30s, com jitter de ±20% e teto absoluto de 30s. O padrão é
+`GRPC_RETRY_MAX_ATTEMPTS=6` (original + cinco retries); aceita 1–10, com 1
+desabilitando retries. Após o limite, o Observable devolve o erro gRPC original.
+Retries nativos do canal estão desabilitados para evitar tentativas sobrepostas.
+Na execução direta, configure o `.env` do barco. No Docker Compose, deadline e
+tentativas são injetados a partir do `.env` do orquestrador.
+
+Os retries preservam `message_id`, sequência, timestamp e dados coletados. Apenas
+`rede.tentativa_envio` avança a partir do valor recebido. O pacote e os metadados
+do chamador não são alterados. `x-correlation-id` é preenchido com `message_id`
+quando não informado. ACK de outro UUID falha com `DATA_LOSS`; ACK rejeitado é
+devolvido sem retry. ACK aceito ou duplicado permite confirmar a entrega.
+
+### Contrato com o futuro buffer (SCRUM-15)
+
+Eventos e tipos ficam em `src/grpc/telemetry-delivery.events.ts`:
+
+| Evento | Momento e payload |
+| --- | --- |
+| `telemetry.offline` | Imediato na primeira falha transitória de cada operação, antes de aguardar retry; `{ packet, grpc_code, attempt }` |
+| `telemetry.delivery-settled` | Ao finalizar, falhar ou cancelar; `{ packet, attempts, outcome, grpc_code, ack? }` |
+
+O consumidor offline deverá persistir por `message_id`, sem duplicar itens.
+Enquanto a operação estiver ativa, os retries pertencem ao cliente; o buffer
+deverá aguardar `delivery-settled` para iniciar sua própria retransmissão.
+Somente `outcome=acknowledged` autoriza remover o pacote. `failed` e `cancelled`
+preservam a pendência; `rejected` exige tratamento de rejeição, sem confirmação
+de entrega. Um status gRPC permanente não aciona offline nem retries.
+
+Os eventos são locais e em memória: esta entrega fornece o acionamento para o
+buffer, não uma fila persistente nem garantia de retenção sem consumidor.
+Falha síncrona de listener é registrada sem substituir o resultado da RPC.
+Os logs `telemetry.retry` registram UUID, tentativa, status e próxima espera.
 
 ## Simulador náutico (SCRUM-13)
 
@@ -169,7 +224,7 @@ ela existe; caso contrário, usa a main. Em pushes para main, o contrato vem da
 main do orquestrador. Assim, os PRs correspondentes podem ser validados juntos,
 mas o contrato deve ser integrado antes da implementação do barco.
 
-Para validar apenas o setup da SCRUM-10, execute na raiz do orquestrador:
+Para validar o nó embarcado, execute na raiz do orquestrador:
 
 ```powershell
 docker compose -f docker-compose.local.yml build ferry-boat
@@ -183,10 +238,17 @@ serviços. Confira `http://localhost:3002/health` e o estado `healthy` com
 barco, use `docker compose -f docker-compose.local.yml stop ferry-boat`.
 
 O nó embarcado é um submódulo: seus arquivos, commits e PR pertencem ao repositório
-`ferry-boat`. Trabalhe na branch `feature/SCRUM-10-setup-barco-nestjs`, use o padrão
-`feat(SCRUM-10): declara modulo do simulador gps` e o título de PR
-`[SCRUM-10] Setup do nó embarcado NestJS`. Após integrar a mudança no submódulo,
+`ferry-boat`. Para esta entrega, use a branch `feature/SCRUM-14-cliente-grpc-resiliente`,
+o padrão `feat(SCRUM-14): aplica deadline por tentativa grpc` e o título de PR
+`[SCRUM-14] Implementa cliente gRPC resiliente`.
+Ticket: [SCRUM-14](https://rafafigolif.atlassian.net/browse/SCRUM-14).
+Após integrar a mudança no submódulo,
 atualize a referência de `ferry-boat` no orquestrador pelo fluxo de revisão da equipe.
+
+Durante a revisão local, mantenha o submódulo na branch da entrega.
+`git submodule update` restaura o commit registrado no orquestrador, que pode
+anteceder a feature em revisão. Para conferir a versão em uso, execute
+`git -C ferry-boat branch --show-current` a partir da raiz do orquestrador.
 
 Nas branches, registre um commit por arquivo alterado ou por alteração lógica
 individual, sempre com descrição específica e referência ao ticket. Adicione
@@ -196,5 +258,8 @@ separe os trechos com `git add -p`; evite reunir várias alterações independen
 um commit genérico. Essa regra também se aplica aos commits do orquestrador.
 
 Referências técnicas: [cliente gRPC do Nest](https://docs.nestjs.com/microservices/grpc),
+[deadlines](https://grpc.io/docs/guides/deadlines/),
+[keepalive](https://grpc.io/docs/guides/keepalive/) e
+[retries](https://grpc.io/docs/guides/retry/),
 [compatibilidade do Nest 12](https://docs.nestjs.com/migration-guide) e
 [opções do ts-proto](https://github.com/stephenh/ts-proto).
