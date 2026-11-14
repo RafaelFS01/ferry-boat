@@ -33,7 +33,30 @@ export function batteryLevel(volts: number): { percent: number; zone: Zone } {
   return { percent, zone };
 }
 
-const CARDINALS = ['N', 'NE', 'L', 'SE', 'S', 'SO', 'O', 'NO'] as const;
+// Pressão de óleo do simulador: 1,5 bar em marcha lenta a 4,5 bar em carga máxima.
+export const OIL_RANGE = { min: 0, max: 6 } as const;
+
+export function oilZone(bar: number, rpm: number): Zone {
+  if (rpm === 0) return 'normal';
+  if (bar < 1 || bar > 5.5) return 'danger';
+  if (bar < 1.3 || bar > 5) return 'warn';
+  return 'normal';
+}
+
+/** Mesmo limite de combustível baixo do dashboard da Central (15%). */
+export function fuelZone(percent: number): Zone {
+  if (percent < 15) return 'danger';
+  if (percent < 25) return 'warn';
+  return 'normal';
+}
+
+export const BATTERY_RANGE = { min: 22, max: 30 } as const;
+
+export function batteryZone(volts: number): Zone {
+  return batteryLevel(volts).zone;
+}
+
+const CARDINALS =['N', 'NE', 'L', 'SE', 'S', 'SO', 'O', 'NO'] as const;
 
 export function cardinalOf(heading: number): string {
   const index = Math.round((((heading % 360) + 360) % 360) / 45) % 8;

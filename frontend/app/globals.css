@@ -9,41 +9,69 @@
   --color-ink: var(--ink);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-needle: var(--needle);
   --color-ok: var(--ok);
   --color-warn: var(--warn);
   --color-danger: var(--danger);
-  --font-sans: var(--font-body), system-ui, sans-serif;
-  --font-display: var(--font-condensed), system-ui, sans-serif;
+  --font-sans: var(--font-suse), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
 }
 
-/* Modo Sol: contraste máximo para tela sob luz direta */
+/*
+ * Modo Sol: mostradores brancos de instrumento marinho, tinta preta e ponteiro
+ * laranja-sinal; contraste máximo sob luz direta.
+ */
 :root {
   color-scheme: light;
-  --bg: #e9edf1;
-  --surface: #ffffff;
-  --surface-2: #f3f5f8;
-  --line: #c4ccd5;
-  --ink: #06121d;
-  --muted: #4a5866;
-  --accent: #0b4f8a;
-  --ok: #0f7a3a;
-  --warn: #9a5a00;
-  --danger: #c4161c;
+  --bg: #e4e7eb;
+  --surface: #f2f3f5;
+  --surface-2: #e1e4e9;
+  --line: #c3c8d0;
+  --ink: #0b0c0e;
+  --muted: #535b68;
+  --accent: #1f2de6;
+  --accent-ink: #ffffff;
+  --needle: #e2401c;
+  --ok: #0f7a44;
+  --warn: #b26a00;
+  --danger: #c8102e;
+  --face: #fcfcfa;
+  --face-edge: #e9ebee;
+  --bezel-a: #ffffff;
+  --bezel-b: #9aa1ab;
+  --bevel: rgb(255 255 255 / 0.9);
+  --drop: rgb(15 20 30 / 0.07);
+  --grid-dot: rgb(11 12 14 / 0.09);
+  --glow: none;
 }
 
-/* Modo Noite Náutico: tons quentes e baixa luminância para preservar a visão noturna */
+/*
+ * Modo Noite: luz de ponte em âmbar sobre preto, baixa luminância para
+ * preservar a visão noturna do comandante.
+ */
 [data-theme="noite"] {
   color-scheme: dark;
-  --bg: #050608;
-  --surface: #0d0f13;
-  --surface-2: #14171c;
-  --line: #2a2324;
-  --ink: #f0c2b4;
-  --muted: #9a7469;
-  --accent: #ff7a59;
-  --ok: #8fbf7f;
-  --warn: #e6a646;
-  --danger: #ff5a52;
+  --bg: #030303;
+  --surface: #0b0a09;
+  --surface-2: #14120f;
+  --line: #2b261d;
+  --ink: #ffcf8a;
+  --muted: #a3885f;
+  --accent: #ffb547;
+  --accent-ink: #120c03;
+  --needle: #ffb547;
+  --ok: #9cc46b;
+  --warn: #ff9a1f;
+  --danger: #ff4b33;
+  --face: #0c0b09;
+  --face-edge: #050504;
+  --bezel-a: #34302a;
+  --bezel-b: #070706;
+  --bevel: rgb(255 207 138 / 0.07);
+  --drop: rgb(0 0 0 / 0.7);
+  --grid-dot: rgb(255 207 138 / 0.06);
+  --glow: drop-shadow(0 0 6px rgb(255 181 71 / 0.45));
 }
 
 html,
@@ -53,14 +81,63 @@ body {
 }
 
 body {
+  /* Papel de carta: grade fina de pontos atrás do console */
+  background-image: radial-gradient(var(--grid-dot) 1px, transparent 1.2px);
+  background-size: 22px 22px;
   font-variant-numeric: tabular-nums;
   -webkit-tap-highlight-color: transparent;
   /* Painel tátil: sem seleção acidental de texto */
   user-select: none;
 }
 
+/* Rótulo gravado em placa: caixa alta, espaçado, em mono */
+.engraved {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Módulo do console: chapa com chanfro de luz em cima e sombra curta embaixo */
+.module {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: inset 0 1px 0 var(--bevel), 0 1px 0 var(--drop), 0 12px 24px -18px var(--drop);
+}
+
+.glow {
+  filter: var(--glow);
+}
+
+/* Botões físicos: sobem no hover e afundam no toque */
+.press {
+  transition: transform 140ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 180ms, box-shadow 180ms;
+}
+
+@media (hover: hover) {
+  .press:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.press:active {
+  transform: translateY(1px) scale(0.98);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .needle-transition {
-    transition: transform 900ms cubic-bezier(0.22, 1, 0.36, 1), stroke-dasharray 900ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition: transform 1100ms cubic-bezier(0.34, 1.32, 0.5, 1);
+  }
+
+  .slide-transition {
+    transition: left 1200ms cubic-bezier(0.22, 1, 0.36, 1), width 1200ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .segment {
+    transition: background-color 400ms, opacity 400ms;
   }
 }

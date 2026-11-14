@@ -6,10 +6,10 @@ export const ZONE_TEXT: Record<Zone, string> = {
   danger: 'text-danger',
 };
 
-export const ZONE_STROKE: Record<Zone, string> = {
-  normal: 'var(--accent)',
-  warn: 'var(--warn)',
-  danger: 'var(--danger)',
+export const ZONE_BG: Record<Zone, string> = {
+  normal: 'bg-accent',
+  warn: 'bg-warn',
+  danger: 'bg-danger',
 };
 
 export type Tone = 'ok' | 'warn' | 'danger' | 'muted';
