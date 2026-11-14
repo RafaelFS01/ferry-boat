@@ -11,8 +11,11 @@ export interface BoatEnvironment {
   SIMULATOR_SEED: number | undefined;
   GRPC_DEADLINE_MS: number;
   GRPC_RETRY_MAX_ATTEMPTS: number;
+  BUFFER_ENABLED: boolean;
   BUFFER_MAX_ITEMS: number;
   BUFFER_BACKUP_PATH: string;
+  BUFFER_DRAIN_INTERVAL_MS: number;
+  BUFFER_RETRY_INTERVAL_MS: number;
   TELEMETRY_PROTO_PATH: string | undefined;
   GRPC_TLS_CA_PATH: string | undefined;
   GRPC_TLS_CERT_PATH: string | undefined;
@@ -50,6 +53,10 @@ export function validateEnvironment(
 ): BoatEnvironment {
   const nodeEnv = text(environment, 'NODE_ENV', 'development');
   const enabled = environment.SIMULATOR_ENABLED ?? 'true';
+  const bufferEnabled = environment.BUFFER_ENABLED ?? 'true';
+  if (!['true', 'false', true, false].includes(bufferEnabled as string | boolean)) {
+    throw new Error('BUFFER_ENABLED deve ser true ou false.');
+  }
   if (!['true', 'false', true, false].includes(enabled as string | boolean)) {
     throw new Error('SIMULATOR_ENABLED deve ser true ou false.');
   }
@@ -107,8 +114,11 @@ export function validateEnvironment(
     SIMULATOR_SEED: seed,
     GRPC_DEADLINE_MS: positiveInteger(environment, 'GRPC_DEADLINE_MS', 2500, 2500),
     GRPC_RETRY_MAX_ATTEMPTS: positiveInteger(environment, 'GRPC_RETRY_MAX_ATTEMPTS', 6, 10),
-    BUFFER_MAX_ITEMS: positiveInteger(environment, 'BUFFER_MAX_ITEMS', 5000),
-    BUFFER_BACKUP_PATH: text(environment, 'BUFFER_BACKUP_PATH', './data/telemetry_buffer_backup.json'),
+    BUFFER_ENABLED: bufferEnabled === 'true' || bufferEnabled === true,
+    BUFFER_MAX_ITEMS: positiveInteger(environment, 'BUFFER_MAX_ITEMS', 5000, 100000),
+    BUFFER_BACKUP_PATH: text(environment, 'BUFFER_BACKUP_PATH', './data/telemetry-buffer.sqlite'),
+    BUFFER_DRAIN_INTERVAL_MS: positiveInteger(environment, 'BUFFER_DRAIN_INTERVAL_MS', 20, 2147483647),
+    BUFFER_RETRY_INTERVAL_MS: positiveInteger(environment, 'BUFFER_RETRY_INTERVAL_MS', 5000, 2147483647),
     TELEMETRY_PROTO_PATH: environment.TELEMETRY_PROTO_PATH === undefined
       ? undefined
       : text(environment, 'TELEMETRY_PROTO_PATH'),
