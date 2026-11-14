@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+/* Tokens semânticos; cada tema redefine apenas as variáveis. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-body), system-ui, sans-serif;
+  --font-display: var(--font-condensed), system-ui, sans-serif;
+}
+
+/* Modo Sol: contraste máximo para tela sob luz direta */
+:root {
+  color-scheme: light;
+  --bg: #e9edf1;
+  --surface: #ffffff;
+  --surface-2: #f3f5f8;
+  --line: #c4ccd5;
+  --ink: #06121d;
+  --muted: #4a5866;
+  --accent: #0b4f8a;
+  --ok: #0f7a3a;
+  --warn: #9a5a00;
+  --danger: #c4161c;
+}
+
+/* Modo Noite Náutico: tons quentes e baixa luminância para preservar a visão noturna */
+[data-theme="noite"] {
+  color-scheme: dark;
+  --bg: #050608;
+  --surface: #0d0f13;
+  --surface-2: #14171c;
+  --line: #2a2324;
+  --ink: #f0c2b4;
+  --muted: #9a7469;
+  --accent: #ff7a59;
+  --ok: #8fbf7f;
+  --warn: #e6a646;
+  --danger: #ff5a52;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+body {
+  font-variant-numeric: tabular-nums;
+  -webkit-tap-highlight-color: transparent;
+  /* Painel tátil: sem seleção acidental de texto */
+  user-select: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .needle-transition {
+    transition: transform 900ms cubic-bezier(0.22, 1, 0.36, 1), stroke-dasharray 900ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
