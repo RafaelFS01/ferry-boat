@@ -59,9 +59,9 @@ src/
   main.ts
   config/         # Leitura e validação do ambiente; localização do contrato
   simulator/      # Modelo náutico, sensores, ciclo e eventos da SCRUM-13
-  buffer/         # BufferModule — implementação na SCRUM-15
+  buffer/         # FIFO, cache limitado e SQLite em worker (SCRUM-15)
   grpc/           # GrpcClientModule, cliente tipado e tipos gerados
-  edge-api/       # EdgeApiModule e GET /health
+  edge-api/       # Health, estado do buffer e ultima coleta
 scripts/proto.cjs  # Geração de tipos e empacotamento do IDL
 test/             # Testes com o runner nativo do Node.js
 ```
@@ -76,10 +76,10 @@ preservam o `snake_case` do IDL e o loader usa `keepCase: true`. Os campos `int6
 (`timestamp_coleta` e `processado_em`) são strings, tanto no gerador quanto no
 loader, evitando perda de precisão. Enums permanecem numéricos.
 
-O simulador inicia a coleta automaticamente; o envio à Central será conectado
-pelo consumidor de eventos nas próximas tarefas. O cliente já aplica deadlines,
-keepalive e retries da SCRUM-14. Persistência FIFO e descarregamento da fila
-permanecem na SCRUM-15; suas variáveis ficam documentadas e validadas.
+O simulador inicia a coleta automaticamente. O BufferModule da SCRUM-15 confirma
+a persistência de cada pacote antes de enviar pelo cliente resiliente da SCRUM-14.
+Durante indisponibilidade da Central, a coleta continua e a cabeça da fila é
+preservada. Desabilite `BUFFER_ENABLED=false` em verificações isoladas de infraestrutura.
 
 ## Cliente gRPC resiliente (SCRUM-14)
 
@@ -115,7 +115,7 @@ do chamador não são alterados. `x-correlation-id` é preenchido com `message_i
 quando não informado. ACK de outro UUID falha com `DATA_LOSS`; ACK rejeitado é
 devolvido sem retry. ACK aceito ou duplicado permite confirmar a entrega.
 
-### Contrato com o futuro buffer (SCRUM-15)
+### Contrato com o buffer (SCRUM-15)
 
 Eventos e tipos ficam em `src/grpc/telemetry-delivery.events.ts`:
 
@@ -124,15 +124,16 @@ Eventos e tipos ficam em `src/grpc/telemetry-delivery.events.ts`:
 | `telemetry.offline` | Imediato na primeira falha transitória de cada operação, antes de aguardar retry; `{ packet, grpc_code, attempt }` |
 | `telemetry.delivery-settled` | Ao finalizar, falhar ou cancelar; `{ packet, attempts, outcome, grpc_code, ack? }` |
 
-O consumidor offline deverá persistir por `message_id`, sem duplicar itens.
+O consumidor offline persiste por `message_id`, sem duplicar itens pendentes.
 Enquanto a operação estiver ativa, os retries pertencem ao cliente; o buffer
 deverá aguardar `delivery-settled` para iniciar sua própria retransmissão.
 Somente `outcome=acknowledged` autoriza remover o pacote. `failed` e `cancelled`
 preservam a pendência; `rejected` exige tratamento de rejeição, sem confirmação
 de entrega. Um status gRPC permanente não aciona offline nem retries.
 
-Os eventos são locais e em memória: esta entrega fornece o acionamento para o
-buffer, não uma fila persistente nem garantia de retenção sem consumidor.
+Os eventos continuam locais e em memória. O BufferModule fornece a persistência;
+a garantia de retenção vale para admissões confirmadas no SQLite. Durante o
+envio automático a amostra já está persistida quando ocorre o evento offline.
 Falha síncrona de listener é registrada sem substituir o resultado da RPC.
 Os logs `telemetry.retry` registram UUID, tentativa, status e próxima espera.
 
@@ -149,7 +150,8 @@ O evento `telemetry.generated` transporta `GeneratedTelemetryPacket`, um
 `@OnEvent(TELEMETRY_GENERATED_EVENT)`; o alias não faz parte do Protobuf.
 O simulador aguarda o registro dos listeners, funciona sem Central/consumidor,
 emite uma amostra por ciclo sem rajadas após atrasos e cancela o timer ao encerrar.
-O evento é apenas em memória: ainda não há garantia de armazenamento ou entrega.
+O evento é em memória; o consumidor do BufferModule faz a admissão durável e
+coordena o envio, quando `BUFFER_ENABLED=true`.
 
 O trajeto é uma geodésica sintética São Joaquim (-12.9482, -38.5028) ↔ Bom
 Despacho (-12.9774, -38.5724). O barco começa atracado, aguarda 30s, acelera e
@@ -195,10 +197,95 @@ npm exec --yes --package=@bufbuild/buf@1.75.0 -- buf breaking --against ../ferry
 Estes parâmetros são de demonstração, sem calibração para uma embarcação, maré
 ou rota operacional real.
 
+## Buffer FIFO persistente (SCRUM-15)
+
+A fila usa SQLite nativo do Node 24 em worker dedicado. Cada admissão é gravada
+em transação com WAL e `synchronous=FULL` antes de iniciar a RPC. A janela em
+RAM é limitada a `BUFFER_MAX_ITEMS`; o excedente permanece apenas em disco e
+é lido conforme a cabeça avança. Todos os pacotes, inclusive os presentes no
+cache, já estão persistidos. O limite de RAM não causa descarte nem limita o
+total de amostras retidas.
+
+A posição FIFO persistida representa a ordem de entrada do fluxo de coleta,
+que é cronológico no simulador. Memória, disco, novas coletas e reinícios usam
+a mesma ordem. O contador `sequence_number` pode reiniciar por execução sem
+reposicionar pacotes novos à frente de coletas antigas. UUIDs pendentes são
+deduplicados, preservando a primeira coleta.
+
+Existe somente uma operação gRPC ativa do buffer. A cabeça permanece retida
+durante todos os retries do cliente. Somente ACK aceito ou duplicado do mesmo
+UUID permite removê-la; há pausa mínima de 20ms após confirmar e persistir a
+remoção, com limite teórico de 50 envios/s. O diagnóstico de envio recebe o
+`tamanho_buffer_local` real sem alterar a coleta original.
+
+Após esgotar falhas transitórias, o buffer aguarda 5s e tenta novamente a cabeça.
+Novas amostras continuam entrando no fim da fila. Rejeição ou erro permanente
+coloca a fila em `blocked`, sem pular nem descartar o pacote; exige intervenção
+na causa da rejeição. Falha de disco sinaliza `storage_error` e impede continuar
+o descarregamento. Uma admissão que não consiga concluir o commit rejeita com
+erro e é registrada nos logs; a operação exige disco gravável e espaço disponível.
+
+Se houver queda depois do aceite remoto e antes da remoção local, o mesmo UUID
+será retransmitido. A garantia é de entrega pelo menos uma vez, com idempotência
+na Central. O último pacote coletado permanece salvo mesmo após esvaziar a fila.
+No encerramento, timers/RPC são cancelados e as admissões pendentes terminam
+antes de fechar o banco.
+
+| Variável | Padrão e finalidade |
+| --- | --- |
+| `BUFFER_ENABLED` | `true`; `false` desliga persistência e envio automático |
+| `BUFFER_MAX_ITEMS` | `5000`; cache de 1–100000 pacotes, não capacidade total |
+| `BUFFER_BACKUP_PATH` | `./data/telemetry-buffer.sqlite`; caminho relativo ao barco ou absoluto |
+| `BUFFER_DRAIN_INTERVAL_MS` | `20`; pausa mínima após cada confirmação, maior que zero |
+| `BUFFER_RETRY_INTERVAL_MS` | `5000`; espera após esgotar retries transitórios, maior que zero |
+
+No Compose, as variáveis vêm do `.env` do orquestrador. O caminho padrão fica
+em `/app/data/telemetry-buffer.sqlite`, dentro de `boat-buffer`. O nome da variável
+`BUFFER_BACKUP_PATH` foi mantido; o formato agora é SQLite, independentemente
+da extensão configurada. Um arquivo JSON antigo não é convertido nem apagado
+automaticamente: configure um caminho SQLite novo para preservar esse arquivo.
+
+Um único processo pode consumir cada arquivo. Outra instância recebe erro de
+bloqueio. A recuperação após queda usa o WAL; preserve o banco e seus arquivos
+auxiliares no mesmo volume. Para copiar um backup, encerre a aplicação antes
+ou use uma ferramenta de backup SQLite, mantendo uma cópia consistente.
+
+### API interna para o Painel do Capitão
+
+- `GET /telemetry/buffer/status`: estado e contadores, sem acessar disco no loop HTTP.
+- `GET /telemetry/latest`: última coleta persistida completa, inclusive após restart
+  ou drain; HTTP 404 enquanto ainda não há coleta.
+
+Ambas as respostas usam `Cache-Control: no-store`. Timestamps e sequência são
+strings. Nas coletas do simulador, `latest` preserva o alias local
+`packet_id=message_id`; esse alias não é serializado na RPC Protobuf.
+
+| Campo de status | Significado |
+| --- | --- |
+| `enabled`, `state` | Habilitação e estado: disabled, idle, draining, offline, blocked ou storage_error |
+| `pending_count` | Total de pacotes admitidos ainda sem remoção confirmada |
+| `memory_count`, `disk_count` | Janela RAM e excedente exclusivamente em disco; somam o total pendente |
+| `memory_limit` | Limite configurado para a janela RAM |
+| `in_flight` | UUID em envio, ou null; pode continuar preenchido durante retries do cliente |
+| `oldest_timestamp` | Timestamp da cabeça, ou null |
+| `next_retry_at` | Epoch em ms da próxima tentativa do buffer, ou null durante retries internos do cliente |
+| `last_ack_at` | Epoch em ms da última confirmação/remoção local desta execução, ou null |
+| `last_error` | Causa operacional resumida, ou null |
+
+Exemplo de consulta local:
+
+```powershell
+Invoke-RestMethod http://localhost:3002/telemetry/buffer/status
+Invoke-RestMethod http://localhost:3002/telemetry/latest
+```
+
+`/health` continua verificando o processo do barco. A Central não precisa estar
+disponível para os endpoints de bordo responderem.
+
 ## Ambiente e segurança do canal
 
 O [.env.example](.env.example) documenta host/porta da API, endereço da Central,
-identificador do barco, ciclo de envio e parâmetros futuros de resiliência.
+identificador do barco, ciclo de envio e parâmetros de resiliência/persistência.
 Valores inválidos impedem a inicialização com uma mensagem indicando a variável.
 
 Para o mTLS previsto na arquitetura, configure `GRPC_TLS_CA_PATH`,
@@ -228,20 +315,25 @@ Para validar o nó embarcado, execute na raiz do orquestrador:
 
 ```powershell
 docker compose -f docker-compose.local.yml build ferry-boat
-docker compose -f docker-compose.local.yml run --rm --no-deps -T ferry-boat sh -c "npm ci && npm test && npm run typecheck"
+docker compose -f docker-compose.local.yml run --rm --no-deps -T -e BUFFER_ENABLED=false ferry-boat sh -c "npm ci && npm test && npm run typecheck"
 docker compose -f docker-compose.local.yml up -d --no-deps --wait --wait-timeout 120 ferry-boat
 ```
 
+`BUFFER_ENABLED=false` isola os testes de infraestrutura do volume de produção;
+os testes do buffer habilitam explicitamente suas instâncias em arquivos temporários.
 O `--no-deps` permite verificar o barco antes de iniciar a Central e os demais
 serviços. Confira `http://localhost:3002/health` e o estado `healthy` com
 `docker compose -f docker-compose.local.yml ps ferry-boat`. Para parar apenas o
 barco, use `docker compose -f docker-compose.local.yml stop ferry-boat`.
 
+O barco não depende do healthcheck da Central no Compose: pode iniciar e
+restaurar a fila durante uma partição, mantendo coleta e consultas locais.
+
 O nó embarcado é um submódulo: seus arquivos, commits e PR pertencem ao repositório
-`ferry-boat`. Para esta entrega, use a branch `feature/SCRUM-14-cliente-grpc-resiliente`,
-o padrão `feat(SCRUM-14): aplica deadline por tentativa grpc` e o título de PR
-`[SCRUM-14] Implementa cliente gRPC resiliente`.
-Ticket: [SCRUM-14](https://rafafigolif.atlassian.net/browse/SCRUM-14).
+`ferry-boat`. Para esta entrega, use a branch `feature/SCRUM-15-buffer-fifo-offline`,
+o padrão `feat(SCRUM-15): implementa fila fifo persistente` e o título de PR
+`[SCRUM-15] Implementa buffer FIFO persistente`.
+Ticket: [SCRUM-15](https://rafafigolif.atlassian.net/browse/SCRUM-15).
 Após integrar a mudança no submódulo,
 atualize a referência de `ferry-boat` no orquestrador pelo fluxo de revisão da equipe.
 
@@ -261,5 +353,6 @@ Referências técnicas: [cliente gRPC do Nest](https://docs.nestjs.com/microserv
 [deadlines](https://grpc.io/docs/guides/deadlines/),
 [keepalive](https://grpc.io/docs/guides/keepalive/) e
 [retries](https://grpc.io/docs/guides/retry/),
+[SQLite WAL](https://sqlite.org/wal.html),
 [compatibilidade do Nest 12](https://docs.nestjs.com/migration-guide) e
 [opções do ts-proto](https://github.com/stephenh/ts-proto).
