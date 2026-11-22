@@ -13,12 +13,14 @@ export const GRPC_RETRY_RUNTIME = Symbol('GRPC_RETRY_RUNTIME');
 
 export interface GrpcRetryRuntime {
   epochMilliseconds(): number;
+  monotonicMilliseconds(): number;
   random(): number;
   scheduler: SchedulerLike;
 }
 
 export const grpcRetryRuntime: GrpcRetryRuntime = {
   epochMilliseconds: () => Date.now(),
+  monotonicMilliseconds: () => performance.now(),
   random: () => Math.random(),
   scheduler: asyncScheduler,
 };
