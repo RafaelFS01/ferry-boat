@@ -11,6 +11,8 @@ export interface BoatEnvironment {
   SIMULATOR_SEED: number | undefined;
   GRPC_DEADLINE_MS: number;
   GRPC_RETRY_MAX_ATTEMPTS: number;
+  GRPC_CIRCUIT_BREAKER_FAILURE_THRESHOLD: number;
+  GRPC_CIRCUIT_BREAKER_COOLDOWN_MS: number;
   BUFFER_ENABLED: boolean;
   BUFFER_MAX_ITEMS: number;
   BUFFER_BACKUP_PATH: string;
@@ -114,6 +116,12 @@ export function validateEnvironment(
     SIMULATOR_SEED: seed,
     GRPC_DEADLINE_MS: positiveInteger(environment, 'GRPC_DEADLINE_MS', 2500, 2500),
     GRPC_RETRY_MAX_ATTEMPTS: positiveInteger(environment, 'GRPC_RETRY_MAX_ATTEMPTS', 6, 10),
+    GRPC_CIRCUIT_BREAKER_FAILURE_THRESHOLD: positiveInteger(
+      environment, 'GRPC_CIRCUIT_BREAKER_FAILURE_THRESHOLD', 3, 100,
+    ),
+    GRPC_CIRCUIT_BREAKER_COOLDOWN_MS: positiveInteger(
+      environment, 'GRPC_CIRCUIT_BREAKER_COOLDOWN_MS', 30000, 2147483647,
+    ),
     BUFFER_ENABLED: bufferEnabled === 'true' || bufferEnabled === true,
     BUFFER_MAX_ITEMS: positiveInteger(environment, 'BUFFER_MAX_ITEMS', 5000, 100000),
     BUFFER_BACKUP_PATH: text(environment, 'BUFFER_BACKUP_PATH', './data/telemetry-buffer.sqlite'),

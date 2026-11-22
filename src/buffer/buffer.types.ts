@@ -1,3 +1,4 @@
+import type { CircuitState } from '../grpc/circuit-breaker';
 import type { TelemetryPacket } from '../grpc/telemetry';
 
 export interface BufferRow {
@@ -23,6 +24,7 @@ export type BufferState = 'disabled' | 'idle' | 'draining' | 'offline' | 'blocke
 export interface BufferStatus {
   enabled: boolean;
   state: BufferState;
+  circuit_state: CircuitState;
   pending_count: number;
   memory_count: number;
   disk_count: number;

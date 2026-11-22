@@ -43,6 +43,11 @@ test('inicia sem Central, expõe health e transporta o contrato tipado por gRPC'
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { status: 'ok', boat_id: 'ferry-integracao' });
 
+  const bufferStatusResponse = await fetch(`${await app.getUrl()}/telemetry/buffer/status`);
+  assert.equal(bufferStatusResponse.status, 200);
+  const bufferStatus = await bufferStatusResponse.json();
+  assert.equal(bufferStatus.circuit_state, 'CLOSED');
+
   // Recria a Central na mesma porta após comprovar a inicialização offline.
   const central = new grpc.Server();
   central.addService(definition.ferry.telemetry.v1.TelemetryService.service, {

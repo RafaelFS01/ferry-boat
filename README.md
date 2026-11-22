@@ -137,6 +137,23 @@ envio automático a amostra já está persistida quando ocorre o evento offline.
 Falha síncrona de listener é registrada sem substituir o resultado da RPC.
 Os logs `telemetry.retry` registram UUID, tentativa, status e próxima espera.
 
+### Circuit Breaker no canal gRPC (SCRUM-31)
+
+O cliente gRPC mantém uma máquina de estados leve (`CLOSED`, `OPEN`, `HALF_OPEN`)
+integrada ao buffer FIFO em SQLite:
+
+- `CLOSED`: envia normalmente; após `GRPC_CIRCUIT_BREAKER_FAILURE_THRESHOLD`
+  falhas transitórias consecutivas (`UNAVAILABLE` ou `DEADLINE_EXCEEDED`, padrão `3`),
+  abre o circuito (`OPEN`) e interrompe retries extras.
+- `OPEN`: durante `GRPC_CIRCUIT_BREAKER_COOLDOWN_MS` (padrão `30000` ms), novas
+  leituras ficam retidas no buffer SQLite sem disparar chamadas gRPC contra a
+  Central indisponível.
+- `HALF_OPEN`: após o cooldown, permite uma única tentativa de sondagem (sem
+  retries). Recebendo ACK válido, fecha (`CLOSED`) e o buffer retoma o
+  descarregamento FIFO; falhando, retorna imediatamente para `OPEN`.
+
+O estado atual é exposto em `circuit_state` no endpoint `GET /telemetry/buffer/status`.
+
 ## Simulador náutico (SCRUM-13)
 
 A primeira amostra é publicada após `TELEMETRY_INTERVAL_MS` (padrão 5000 ms).
@@ -263,6 +280,7 @@ strings. Nas coletas do simulador, `latest` preserva o alias local
 | Campo de status | Significado |
 | --- | --- |
 | `enabled`, `state` | Habilitação e estado: disabled, idle, draining, offline, blocked ou storage_error |
+| `circuit_state` | Estado do Circuit Breaker do canal gRPC: `CLOSED`, `OPEN` ou `HALF_OPEN` |
 | `pending_count` | Total de pacotes admitidos ainda sem remoção confirmada |
 | `memory_count`, `disk_count` | Janela RAM e excedente exclusivamente em disco; somam o total pendente |
 | `memory_limit` | Limite configurado para a janela RAM |
