@@ -10,6 +10,8 @@ test('aplica os valores do README e do Docker Compose', () => {
   assert.equal(config.BOAT_ID, 'ferry-ivete-sangalo');
   assert.equal(config.TELEMETRY_INTERVAL_MS, 5000);
   assert.equal(config.GRPC_DEADLINE_MS, 2500);
+  assert.equal(config.GRPC_CIRCUIT_BREAKER_FAILURE_THRESHOLD, 3);
+  assert.equal(config.GRPC_CIRCUIT_BREAKER_COOLDOWN_MS, 30000);
   assert.equal(config.BUFFER_MAX_ITEMS, 5000);
   assert.equal(config.SIMULATOR_ENABLED, true);
   assert.equal(config.SIMULATOR_DOCK_TIME_MS, 30000);
@@ -38,6 +40,12 @@ test('recusa portas, ciclos e identificadores inválidos antes de iniciar', () =
     ['TELEMETRY_INTERVAL_MS', '-5'],
     ['TELEMETRY_INTERVAL_MS', '1.5'],
     ['GRPC_DEADLINE_MS', ''],
+    ['GRPC_CIRCUIT_BREAKER_FAILURE_THRESHOLD', '0'],
+    ['GRPC_CIRCUIT_BREAKER_FAILURE_THRESHOLD', '101'],
+    ['GRPC_CIRCUIT_BREAKER_FAILURE_THRESHOLD', '1.5'],
+    ['GRPC_CIRCUIT_BREAKER_COOLDOWN_MS', '0'],
+    ['GRPC_CIRCUIT_BREAKER_COOLDOWN_MS', '-10'],
+    ['GRPC_CIRCUIT_BREAKER_COOLDOWN_MS', '2147483648'],
     ['BUFFER_MAX_ITEMS', '0'],
     ['BOAT_ID', '   '],
     ['NODE_ENV', 'invalid'],
