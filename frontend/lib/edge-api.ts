@@ -52,9 +52,12 @@ export interface TelemetryPacket {
 
 export type BufferState = 'disabled' | 'idle' | 'draining' | 'offline' | 'blocked' | 'storage_error';
 
+export type CircuitState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';
+
 export interface BufferStatus {
   enabled: boolean;
   state: BufferState;
+  circuit_state: CircuitState;
   pending_count: number;
   memory_count: number;
   disk_count: number;

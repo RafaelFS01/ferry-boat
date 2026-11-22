@@ -42,7 +42,7 @@ export class FifoBufferService implements OnModuleInit, OnApplicationBootstrap, 
     private readonly client: TelemetryGrpcClient,
     private readonly readiness: EventEmitterReadinessWatcher,
     @Inject(BUFFER_RUNTIME) private readonly runtime: BufferRuntime = bufferRuntime,
-  ) {}
+  ) { }
 
   async onModuleInit(): Promise<void> {
     if (!this.enabled) { this.state = 'disabled'; return; }
@@ -69,7 +69,7 @@ export class FifoBufferService implements OnModuleInit, OnApplicationBootstrap, 
     this.stop.next();
     this.stop.complete();
     this.closing = (async () => {
-      await this.drainTask?.catch(() => {});
+      await this.drainTask?.catch(() => { });
       await this.serial;
       await this.store.close();
     })();
@@ -138,7 +138,10 @@ export class FifoBufferService implements OnModuleInit, OnApplicationBootstrap, 
 
   getStatus(): BufferStatus {
     return {
-      enabled: this.enabled, state: this.state, pending_count: this.count,
+      enabled: this.enabled,
+      state: this.state,
+      circuit_state: this.client.getCircuitState(),
+      pending_count: this.count,
       memory_count: this.rows.length, disk_count: this.count - this.rows.length,
       memory_limit: this.limit, in_flight: this.active,
       oldest_timestamp: this.rows[0]?.packet.timestamp_coleta ?? null,
@@ -154,24 +157,44 @@ export class FifoBufferService implements OnModuleInit, OnApplicationBootstrap, 
 
   private exclusive<T>(action: () => Promise<T>): Promise<T> {
     const result = this.serial.then(action);
-    this.serial = result.catch(() => {});
+    this.serial = result.catch(() => { });
     return result;
   }
 
   private kick(): void {
     if (!this.started || this.stopped || this.timer !== undefined || this.drainTask || !this.count ||
       this.state === 'blocked' || this.state === 'storage_error' ||
-      this.external.has(this.rows[0]?.packet.message_id ?? '')) return;
+      this.external.has(this.rows[0]?.packet.message_id ?? '')) {
+      return;
+    }
+
+    const now = this.runtime.monotonicMilliseconds();
+    const circuitDelay = this.client.getCircuitRetryAfterMs();
+    const target = Math.max(this.nextEligible, now + circuitDelay);
+
+    if (circuitDelay > 0 && target > this.nextEligible) {
+      this.nextEligible = target;
+
+      if (this.state === 'idle') {
+        this.state = 'offline';
+      }
+
+      this.nextRetryAt = (this.runtime.epochMilliseconds() + Math.ceil(target - now)).toString();
+    }
     this.timer = this.runtime.schedule(() => {
       this.timer = undefined;
-      if (this.runtime.monotonicMilliseconds() < this.nextEligible) { this.kick(); return; }
+      if (this.runtime.monotonicMilliseconds() < this.nextEligible ||
+        this.client.getCircuitRetryAfterMs() > 0) {
+        this.kick();
+        return;
+      }
       const task = this.drainOne();
       this.drainTask = task;
       void task.catch((error: unknown) => this.storageError(error)).finally(() => {
         this.drainTask = undefined;
         this.kick();
       });
-    }, Math.ceil(Math.max(0, this.nextEligible - this.runtime.monotonicMilliseconds())));
+    }, Math.ceil(Math.max(0, target - now)));
   }
 
   private async drainOne(): Promise<void> {
@@ -204,8 +227,10 @@ export class FifoBufferService implements OnModuleInit, OnApplicationBootstrap, 
         this.state = 'idle';
       });
       delivered = true;
-      this.logger.log(JSON.stringify({ event: 'buffer.delivered', message_id: row.packet.message_id,
-        pending_count: this.count }));
+      this.logger.log(JSON.stringify({
+        event: 'buffer.delivered', message_id: row.packet.message_id,
+        pending_count: this.count
+      }));
     } catch (error) {
       if (this.stopped) return;
       if (this.state === 'storage_error') throw error;
@@ -215,9 +240,15 @@ export class FifoBufferService implements OnModuleInit, OnApplicationBootstrap, 
       this.lastError = { kind: 'grpc', code, message: 'Entrega não confirmada; pacote preservado.' };
     } finally {
       this.active = null;
-      const delay = this.config.get(delivered ? 'BUFFER_DRAIN_INTERVAL_MS' : 'BUFFER_RETRY_INTERVAL_MS', { infer: true });
+      const baseDelay = this.config.get(
+        delivered ? 'BUFFER_DRAIN_INTERVAL_MS' : 'BUFFER_RETRY_INTERVAL_MS',
+        { infer: true },
+      );
+      const circuitDelay = delivered ? 0 : this.client.getCircuitRetryAfterMs();
+      const delay = circuitDelay > 0 ? circuitDelay : baseDelay;
       this.nextEligible = this.runtime.monotonicMilliseconds() + delay;
-      this.nextRetryAt = !delivered && this.state === 'offline' ? (this.runtime.epochMilliseconds() + delay).toString() : null;
+      this.nextRetryAt = !delivered && this.state === 'offline'
+        ? (this.runtime.epochMilliseconds() + Math.ceil(delay)).toString() : null;
     }
   }
 
