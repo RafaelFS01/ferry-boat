@@ -102,8 +102,6 @@ export interface TelemetryPacket {
   boat_id: string;
   /** Carimbo de tempo Epoch em milissegundos registrado na origem (barco) */
   timestamp_coleta: string;
-  /** Quantidade de passageiros a bordo na viagem atual (0 a 1000) */
-  passageiros: number;
   /** Métricas de navegação e posicionamento GPS */
   navegacao:
     | NavigationData

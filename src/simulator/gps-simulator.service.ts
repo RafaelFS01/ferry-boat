@@ -76,7 +76,6 @@ export class GpsSimulatorService implements OnApplicationBootstrap, OnModuleDest
         boat_id: this.config.get('BOAT_ID', { infer: true }),
         timestamp_coleta: Math.trunc(this.clock.epochMilliseconds()).toString(),
         sequence_number: this.sequence.toString(),
-        passageiros: snapshot.passageiros,
         navegacao: snapshot.navegacao,
         propulsao: snapshot.propulsao,
         rede: {
