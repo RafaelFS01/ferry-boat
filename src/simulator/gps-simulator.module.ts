@@ -4,11 +4,13 @@ import { randomBytes } from 'node:crypto';
 import { BoatEnvironment } from '../config/environment';
 import { GpsSimulatorService } from './gps-simulator.service';
 import { createSeededRandom } from './random';
+import { SimulatorCommandController } from './simulator-command.controller';
 import {
   SIMULATOR_CLOCK, SIMULATOR_SCHEDULER, SIMULATOR_RANDOM, systemClock, systemScheduler,
 } from './simulator-runtime';
 
 @Module({
+  controllers: [SimulatorCommandController],
   providers: [
     { provide: SIMULATOR_CLOCK, useValue: systemClock },
     { provide: SIMULATOR_SCHEDULER, useValue: systemScheduler },

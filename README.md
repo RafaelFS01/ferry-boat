@@ -297,6 +297,27 @@ Invoke-RestMethod http://localhost:3002/telemetry/buffer/status
 Invoke-RestMethod http://localhost:3002/telemetry/latest
 ```
 
+### Comando do simulador
+
+O módulo *Comando do simulador* do Painel do Capitão ajusta a velocidade e a
+lotação do barco simulado. As próximas coletas já saem com os valores novos,
+então os instrumentos do painel e o Dashboard da Central mudam em tempo real.
+
+- `GET /simulator/command`: comando atual.
+- `PUT /simulator/command`: altera um ou os dois campos; os ausentes mantêm o valor.
+
+| Campo | Valores |
+| --- | --- |
+| `velocidade_alvo_nos` | `null` (automático, 10–14 nós conforme a maré) ou de 0 a 14 nós |
+| `passageiros` | Inteiro de 0 a 1000; sai no campo `passageiros` do pacote |
+
+A física continua valendo: o barco acelera e freia a 0,1 m/s², atraca no destino
+e só retoma a velocidade alvo ao zarpar. Valor fora da faixa retorna HTTP 400.
+
+```powershell
+Invoke-RestMethod http://localhost:3002/simulator/command -Method Put -ContentType application/json -Body '{"velocidade_alvo_nos": 8, "passageiros": 420}'
+```
+
 `/health` continua verificando o processo do barco. A Central não precisa estar
 disponível para os endpoints de bordo responderem.
 

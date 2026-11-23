@@ -1,6 +1,7 @@
 import { NavigationStatus } from '../grpc/telemetry';
 import type { NavigationData, PropulsionData } from '../grpc/telemetry';
 import { gaussian, RandomSource } from './random';
+import { assertCommand, AUTOMATIC_COMMAND, SimulatorCommand } from './simulator-command';
 import {
   SAO_JOAQUIM, BOM_DESPACHO, ROUTE_DISTANCE_METERS, KNOT_IN_METERS_PER_SECOND,
   Coordinates, bearingDegrees, destination,
@@ -22,6 +23,7 @@ export interface NauticalSnapshot {
   readonly position: Coordinates;
   readonly progressMeters: number;
   readonly fuelLiters: number;
+  readonly passageiros: number;
   readonly navegacao: NavigationData;
   readonly propulsao: PropulsionData;
 }
@@ -47,6 +49,7 @@ export class NauticalSimulation {
   private noiseNorth = 0;
   private satelliteEstimate = 11;
   private hdop = 1.4;
+  private command: SimulatorCommand = AUTOMATIC_COMMAND;
 
   constructor(
     private readonly options: NauticalSimulationOptions,
@@ -58,6 +61,15 @@ export class NauticalSimulation {
     }
     this.dockRemaining = options.dockTimeMs / 1000;
     this.fuel = options.fuelCapacityLiters;
+  }
+
+  getCommand(): SimulatorCommand { return this.command; }
+
+  /** Comando do operador: vale a partir do próximo passo da física, sem teletransporte. */
+  setCommand(command: SimulatorCommand): SimulatorCommand {
+    assertCommand(command);
+    this.command = { ...command };
+    return this.command;
   }
 
   advance(seconds: number): NauticalSnapshot {
@@ -89,6 +101,7 @@ export class NauticalSimulation {
       (Math.atan2(this.noiseEast, this.noiseNorth) * 180 / Math.PI + 360) % 360, noiseDistance);
     return {
       direction: this.direction, position: { ...position }, progressMeters: this.progress, fuelLiters: this.fuel,
+      passageiros: this.command.passageiros,
       navegacao: {
         ...measured, velocidade_nos: this.speed / KNOT_IN_METERS_PER_SECOND,
         rumo_graus: this.heading, status_navegacao: this.status,
@@ -111,6 +124,13 @@ export class NauticalSimulation {
     return destination(from, bearingDegrees(from, to), this.progress);
   }
 
+  // Velocidade de cruzeiro: a comandada ou a automática (maré de 12 h com ruído).
+  private cruiseKnots(): number {
+    const commanded = this.command.velocidade_alvo_nos;
+    if (commanded !== null) return commanded;
+    return clamp(12 + 1.5 * Math.sin(2 * Math.PI * this.seconds / 43200) + this.tideNoise, 10, 14);
+  }
+
   private engineLoad(): number { return clamp((this.rpm - 750) / 1100, 0, 1); }
 
   private step(dt: number): void {
@@ -128,7 +148,7 @@ export class NauticalSimulation {
     } else {
       const previousPosition = this.truePosition();
       const remaining = Math.max(0, ROUTE_DISTANCE_METERS - this.progress);
-      const cruiseKnots = clamp(12 + 1.5 * Math.sin(2 * Math.PI * this.seconds / 43200) + this.tideNoise, 10, 14);
+      const cruiseKnots = this.cruiseKnots();
       const cruiseSpeed = cruiseKnots * KNOT_IN_METERS_PER_SECOND;
       // A margem de um subpasso inicia a frenagem antes do limite de parada.
       const brakingDistance = Math.max(0, remaining - this.speed * dt);
@@ -147,13 +167,15 @@ export class NauticalSimulation {
         this.rpm = 750;
       } else {
         const knots = this.speed / KNOT_IN_METERS_PER_SECOND;
-        const cruising = knots >= 10 && brakingSpeed >= cruiseSpeed;
+        const cruising = cruiseKnots > 0 && knots >= Math.min(10, cruiseKnots - 0.5) && brakingSpeed >= cruiseSpeed;
         this.status = cruising ? NavigationStatus.NAVIGATION_STATUS_EM_TRAVESSIA : NavigationStatus.NAVIGATION_STATUS_MANOBRA;
-        const targetRpm = cruising
+        // Faixa de cruzeiro do motor só acima de 10 nós; abaixo disso a rotação acompanha a velocidade.
+        const fullCruise = cruising && knots >= 10;
+        const targetRpm = fullCruise
           ? clamp(1500 + 350 * (knots - 10) / 4 + this.rpmNoise, 1500, 1850)
           : clamp(750 + 750 * knots / 10, 750, 1500);
         this.rpm = approach(this.rpm, targetRpm, 100 * dt);
-        if (cruising) this.rpm = clamp(this.rpm, 1500, 1850);
+        if (fullCruise) this.rpm = clamp(this.rpm, 1500, 1850);
       }
     }
     this.consumption = 8 + 152 * this.engineLoad() ** 3;

@@ -5,6 +5,7 @@ import { EventEmitter2, EventEmitterReadinessWatcher } from '@nestjs/event-emitt
 import { BoatEnvironment } from '../config/environment';
 import { LinkType } from '../grpc/telemetry';
 import { NauticalSimulation } from './nautical-simulation';
+import type { SimulatorCommand } from './simulator-command';
 import {
   SIMULATOR_CLOCK, SIMULATOR_RANDOM, SIMULATOR_SCHEDULER,
   SimulatorClock, SimulatorScheduler, SimulatorRandom,
@@ -43,6 +44,15 @@ export class GpsSimulatorService implements OnApplicationBootstrap, OnModuleDest
       this.config.get('TELEMETRY_INTERVAL_MS', { infer: true }));
   }
 
+  getCommand(): SimulatorCommand { return this.model.getCommand(); }
+
+  /** Aplica um comando parcial; campos ausentes mantêm o valor atual. */
+  updateCommand(update: Partial<SimulatorCommand>): SimulatorCommand {
+    const command = this.model.setCommand({ ...this.model.getCommand(), ...update });
+    this.logger.log(JSON.stringify({ event: 'simulator.command', ...command }));
+    return command;
+  }
+
   onModuleDestroy(): void {
     this.destroyed = true;
     if (this.timer !== undefined) {
@@ -66,7 +76,7 @@ export class GpsSimulatorService implements OnApplicationBootstrap, OnModuleDest
         boat_id: this.config.get('BOAT_ID', { infer: true }),
         timestamp_coleta: Math.trunc(this.clock.epochMilliseconds()).toString(),
         sequence_number: this.sequence.toString(),
-        passageiros: 0,
+        passageiros: snapshot.passageiros,
         navegacao: snapshot.navegacao,
         propulsao: snapshot.propulsao,
         rede: {
