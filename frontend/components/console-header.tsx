@@ -36,12 +36,6 @@ export function ConsoleHeader({ packet, now }: ConsoleHeaderProps) {
             {collectedAt === null ? 'sem leitura' : `leitura ${formatAge(collectedAt, now)}`}
           </span>
         </div>
-        {packet && (
-          <div className="flex flex-col items-end border-l border-line pl-5">
-            <span className="font-mono text-2xl font-medium leading-none">{formatNumber(packet.passageiros)}</span>
-            <span className="mt-1 whitespace-nowrap font-mono text-xs text-muted">a bordo</span>
-          </div>
-        )}
         <ThemeToggle />
       </div>
     </header>
