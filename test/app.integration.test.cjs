@@ -39,9 +39,21 @@ test('inicia sem Central, expõe health e transporta o contrato tipado por gRPC'
   t.after(() => app.close());
   await app.listen(0, '127.0.0.1');
 
-  const response = await fetch(`${await app.getUrl()}/health`);
+  const baseUrl = await app.getUrl();
+  const response = await fetch(`${baseUrl}/health`);
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { status: 'ok', boat_id: 'ferry-integracao' });
+
+  const put = (body) => fetch(`${baseUrl}/simulator/command`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const commanded = await put({ velocidade_alvo_nos: 8.5 });
+  assert.equal(commanded.status, 200);
+  assert.deepEqual(await commanded.json(), { velocidade_alvo_nos: 8.5, passageiros: 0 });
+  assert.equal((await put({ passageiros: 1001 })).status, 400);
+  assert.equal((await put({ velocidade_alvo_nos: '8' })).status, 400);
+  const current = await fetch(`${baseUrl}/simulator/command`);
+  assert.deepEqual(await current.json(), { velocidade_alvo_nos: 8.5, passageiros: 0 });
 
   const bufferStatusResponse = await fetch(`${await app.getUrl()}/telemetry/buffer/status`);
   assert.equal(bufferStatusResponse.status, 200);

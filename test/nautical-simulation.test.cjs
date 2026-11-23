@@ -116,3 +116,31 @@ test('seed reproduz sensores e subpassos conservam resultado em intervalos difer
   assert.throws(() => a.advance(NaN), /Tempo/);
   assert.throws(() => make({ fuelCapacityLiters: 0 }), /invalidos/);
 });
+
+test('comando do operador ajusta velocidade alvo e lotacao sem saltos e volta ao automatico', () => {
+  const model = make({ dockTimeMs: 0 });
+  model.setCommand({ velocidade_alvo_nos: 6, passageiros: 420 });
+  let sample;
+  for (let i = 0; i < 60; i++) sample = model.advance(1);
+  assert.equal(sample.passageiros, 420);
+  assert.ok(Math.abs(sample.navegacao.velocidade_nos - 6) < 1e-9);
+  assert.equal(sample.navegacao.status_navegacao, S.NAVIGATION_STATUS_EM_TRAVESSIA);
+  assert.ok(sample.propulsao.rpm_motor > 750 && sample.propulsao.rpm_motor < 1500);
+
+  model.setCommand({ velocidade_alvo_nos: 0, passageiros: 420 });
+  const slowing = model.advance(1);
+  // Desacelera no limite fisico de 0,1 m/s², sem parar de uma vez
+  assert.ok(Math.abs((6 * route.KNOT_IN_METERS_PER_SECOND - 0.1) / route.KNOT_IN_METERS_PER_SECOND
+    - slowing.navegacao.velocidade_nos) < 1e-9);
+  for (let i = 0; i < 60; i++) sample = model.advance(1);
+  assert.equal(sample.navegacao.velocidade_nos, 0);
+  assert.equal(sample.navegacao.status_navegacao, S.NAVIGATION_STATUS_MANOBRA);
+
+  model.setCommand({ velocidade_alvo_nos: null, passageiros: 0 });
+  for (let i = 0; i < 120; i++) sample = model.advance(1);
+  assert.ok(sample.navegacao.velocidade_nos >= 10);
+
+  assert.throws(() => model.setCommand({ velocidade_alvo_nos: 15, passageiros: 0 }), /velocidade_alvo_nos/);
+  assert.throws(() => model.setCommand({ velocidade_alvo_nos: 5, passageiros: 1.5 }), /passageiros/);
+  assert.deepEqual(model.getCommand(), { velocidade_alvo_nos: null, passageiros: 0 });
+});
