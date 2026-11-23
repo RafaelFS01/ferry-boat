@@ -4,6 +4,7 @@ import { useEdgeTelemetry } from '@/hooks/use-edge-telemetry';
 import { useNow } from '@/hooks/use-now';
 import { cardinalOf, RPM_RANGE, SPEED_RANGE } from '@/lib/instruments';
 import { deriveLinkStatus } from '@/lib/link-status';
+import { CommandModule } from './command-module';
 import { ConsoleHeader } from './console-header';
 import { Dial } from './instrument/dial';
 import { GyroRepeater } from './instrument/gyro-repeater';
@@ -61,6 +62,8 @@ export function CaptainPanel() {
       </div>
 
       <PassageStrip nav={nav} now={now} />
+
+      <CommandModule />
 
       <div className="grid gap-4 sm:gap-5 lg:grid-cols-[1.7fr_1fr]">
         <MachineryModule engine={packet?.propulsao} />

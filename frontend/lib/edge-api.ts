@@ -88,3 +88,29 @@ export const fetchLatestTelemetry = (signal: AbortSignal) =>
 
 export const fetchBufferStatus = (signal: AbortSignal) =>
   getJson<BufferStatus>('/telemetry/buffer/status', signal);
+
+/** Comando manual do simulador (src/simulator/simulator-command.ts). */
+export interface SimulatorCommand {
+  /** `null` = velocidade automática do simulador */
+  velocidade_alvo_nos: number | null;
+  passageiros: number;
+}
+
+export const MAX_COMMANDED_KNOTS = 14;
+export const MAX_PASSENGERS = 1000;
+
+export const fetchSimulatorCommand = (signal: AbortSignal) =>
+  getJson<SimulatorCommand>('/simulator/command', signal);
+
+export async function sendSimulatorCommand(update: Partial<SimulatorCommand>): Promise<SimulatorCommand | null> {
+  try {
+    const response = await fetch(`${EDGE_API_BASE}/simulator/command`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(update),
+    });
+    return response.ok ? ((await response.json()) as SimulatorCommand) : null;
+  } catch {
+    return null;
+  }
+}
